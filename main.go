@@ -16,14 +16,14 @@ import (
 
 type Timer struct {
 	id     int
-	tag    int
+	tag    string
 	delay  int
 	active bool
 }
 
 var counter int
 var timers map[int]*Timer
-var timersTags map[int]*Timer
+var timersTags map[string]*Timer
 
 func generateId() int {
 	counter++
@@ -44,7 +44,7 @@ func getTimerById(id int) *Timer {
 	}
 }
 
-func getTimerByTag(tag int) *Timer {
+func getTimerByTag(tag string) *Timer {
 	t, ok := timersTags[tag]
 	if ok {
 		return t
@@ -74,7 +74,7 @@ func deleteTimer(t *Timer) {
 func initTimers() {
 	counter = 0
 	timers = make(map[int]*Timer)
-	timersTags = make(map[int]*Timer)
+	timersTags = make(map[string]*Timer)
 }
 
 // --------- HANDLERS ----------
@@ -104,7 +104,7 @@ func outJSON(ok bool, id int, code int, message string) interface{} {
 func addTimerHandler(input *jsonq.JsonQuery) interface{} {
 
 	delay, _ := input.Int("delay")
-	tag, _ := input.Int("tag")
+	tag, _ := input.String("tag")
 
 	timer := Timer{
 		id:     generateId(),
@@ -121,12 +121,15 @@ func addTimerHandler(input *jsonq.JsonQuery) interface{} {
 }
 
 func deleteTimerHandler(input *jsonq.JsonQuery) interface{} {
-	id, err := input.Int("id")
-	if err != nil {
-		return outJSON(false, 0, 1, "no id field")
+
+	id, _ := input.Int("id")
+	timer := getTimerById(id)
+
+	if timer == nil {
+		tag, _ := input.String("tag")
+		timer = getTimerByTag(tag)
 	}
 
-	timer := getTimerById(id)
 	if timer == nil {
 		return outJSON(false, id, 2, "timer not found")
 	}
