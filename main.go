@@ -19,6 +19,7 @@ type Timer struct {
 	tag    string
 	delay  int
 	active bool
+	url    string
 }
 
 var counter int
@@ -31,8 +32,15 @@ func generateId() int {
 }
 
 func doTimerAction(t *Timer) {
-	// todo!
-	fmt.Printf("BOOM id = %d\n", t.id)
+
+	fmt.Printf("Timer BOOM id = %d\n", t.id)
+
+	_, err := http.Get(t.url)
+	if err == nil {
+		fmt.Printf("Timer GET url success\n")
+	} else {
+		fmt.Printf("Timer GET fail; error = %s\n", err)
+	}
 }
 
 func getTimerById(id int) *Timer {
@@ -105,12 +113,14 @@ func addTimerHandler(input *jsonq.JsonQuery) interface{} {
 
 	delay, _ := input.Int("delay")
 	tag, _ := input.String("tag")
+	url, _ := input.String("url")
 
 	timer := Timer{
 		id:     generateId(),
 		tag:    tag,
 		delay:  delay,
 		active: true,
+		url:    url,
 	}
 
 	setTimer(&timer)
