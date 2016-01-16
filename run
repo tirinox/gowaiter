@@ -1,0 +1,4 @@
+#!/bin/sh
+docker stop gowaiter_instance
+docker rm gowaiter_instance
+docker run -p 10025:10025 -d --name gowaiter_instance --restart="always" tirinox/gowaiter

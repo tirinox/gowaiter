@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"flag"
 
 	"github.com/jmoiron/jsonq"
 	"github.com/zenazn/goji"
@@ -169,6 +170,8 @@ func makeHandler(h Handler) web.HandlerType {
 }
 
 func main() {
+
+	flag.Set("bind", ":10025")
 
 	initTimers()
 
