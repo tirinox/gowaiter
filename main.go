@@ -3,10 +3,10 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net/http"
 	"time"
-	"flag"
 
 	"github.com/jmoiron/jsonq"
 	"github.com/zenazn/goji"
@@ -38,7 +38,7 @@ func doTimerAction(t *Timer) {
 
 	_, err := http.Get(t.url)
 	if err == nil {
-		fmt.Printf("Timer GET url success\n")
+		fmt.Printf("Timer GET url %s success\n", t.url)
 	} else {
 		fmt.Printf("Timer GET fail; error = %s\n", err)
 	}
