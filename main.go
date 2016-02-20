@@ -63,7 +63,7 @@ func getTimerByTag(tag string) *Timer {
 }
 
 func setTimer(t *Timer) {
-	fmt.Printf("SetTimer id = %d for %d sec\n", t.id, t.delay)
+	fmt.Printf("SetTimer id = %d for %d sec; tag = %s\n", t.id, t.delay, t.tag)
 	timers[t.id] = t
 	timersTags[t.tag] = t
 
