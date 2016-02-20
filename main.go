@@ -66,12 +66,12 @@ func setTimer(t *Timer) {
 	fmt.Printf("SetTimer id = %d for %d sec\n", t.id, t.delay)
 	timers[t.id] = t
 	timersTags[t.tag] = t
-	go func(t *Timer) {
-		time.Sleep(time.Duration(t.delay) * time.Second)
+
+	time.AfterFunc(time.Duration(t.delay)*time.Second, func() {
 		if t.active {
 			doTimerAction(t)
 		}
-	}(t)
+	})
 }
 
 func deleteTimer(t *Timer) {
