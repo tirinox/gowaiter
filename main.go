@@ -63,7 +63,7 @@ func getTimerByTag(tag string) *Timer {
 }
 
 func setTimer(t *Timer) {
-	fmt.Printf("SetTimer id = %d for %d sec; tag = %s\n", t.id, t.delay, t.tag)
+	fmt.Printf("SetTimer id = %d for %d sec; tag = %v\n", t.id, t.delay, t.tag)
 	timers[t.id] = t
 	timersTags[t.tag] = t
 
@@ -158,6 +158,9 @@ func makeHandler(h Handler) web.HandlerType {
 		decoder := json.NewDecoder(r.Body)
 		decoder.Decode(&data)
 		jq := jsonq.NewQuery(data)
+
+		fmt.Printf("request body = %v", data)
+
 		result := h(jq)
 		js, err := json.Marshal(result)
 		if err != nil {
