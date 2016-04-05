@@ -150,6 +150,16 @@ func deleteTimerHandler(input *jsonq.JsonQuery) interface{} {
 	return outJSON(true, id, 0, "timer deleted")
 }
 
+func infoHandler(input *jsonq.JsonQuery) interface{} {
+	return struct {
+		MC int `json:"maxCounter"`
+		TA int `json:"timersActive"`
+	}{
+		counter,
+		len(timers),
+	}
+}
+
 // ----------- API ------------
 
 func makeHandler(h Handler) web.HandlerType {
@@ -180,5 +190,6 @@ func main() {
 
 	goji.Post("/", makeHandler(addTimerHandler))
 	goji.Delete("/", makeHandler(deleteTimerHandler))
+	goji.Get("/", makeHandler(infoHandler))
 	goji.Serve()
 }
