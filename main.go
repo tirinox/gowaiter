@@ -42,6 +42,7 @@ func doTimerAction(t *Timer) {
 	} else {
 		fmt.Printf("Timer GET fail; error = %s\n", err)
 	}
+	deleteTimer(t)
 }
 
 func getTimerById(id int) *Timer {
