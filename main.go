@@ -24,7 +24,6 @@ type Timer struct {
 }
 
 var counter int
-var timers map[int]*Timer
 var timersTags map[string]*Timer
 
 func generateId() int {
@@ -45,15 +44,6 @@ func doTimerAction(t *Timer) {
 	deleteTimer(t)
 }
 
-func getTimerById(id int) *Timer {
-	t, ok := timers[id]
-	if ok {
-		return t
-	} else {
-		return nil
-	}
-}
-
 func getTimerByTag(tag string) *Timer {
 	t, ok := timersTags[tag]
 	if ok {
@@ -65,9 +55,7 @@ func getTimerByTag(tag string) *Timer {
 
 func setTimer(t *Timer) {
 	fmt.Printf("SetTimer id = %d for %d sec; tag = %v\n", t.id, t.delay, t.tag)
-	timers[t.id] = t
 	timersTags[t.tag] = t
-
 	time.AfterFunc(time.Duration(t.delay)*time.Second, func() {
 		if t.active {
 			doTimerAction(t)
@@ -77,13 +65,11 @@ func setTimer(t *Timer) {
 
 func deleteTimer(t *Timer) {
 	t.active = false
-	delete(timers, t.id)
 	delete(timersTags, t.tag)
 }
 
 func initTimers() {
 	counter = 0
-	timers = make(map[int]*Timer)
 	timersTags = make(map[string]*Timer)
 }
 
@@ -91,7 +77,7 @@ func initTimers() {
 
 type Handler func(input *jsonq.JsonQuery) interface{}
 
-func outJSON(ok bool, id int, code int, message string) interface{} {
+func outJSON(ok bool, code int, message string) interface{} {
 	var result string
 	if ok {
 		result = "ok"
@@ -100,12 +86,10 @@ func outJSON(ok bool, id int, code int, message string) interface{} {
 	}
 	return struct {
 		Result  string `json:"result"`
-		Id      int    `json:"id"`
 		Message string `json:"message"`
 		Code    int    `json:"code"`
 	}{
 		result,
-		id,
 		message,
 		code,
 	}
@@ -116,6 +100,11 @@ func addTimerHandler(input *jsonq.JsonQuery) interface{} {
 	delay, _ := input.Int("delay")
 	tag, _ := input.String("tag")
 	url, _ := input.String("url")
+
+	oldTimer := getTimerByTag(tag)
+	if oldTimer != nil {
+		deleteTimer(oldTimer)
+	}
 
 	timer := Timer{
 		id:     generateId(),
@@ -134,21 +123,16 @@ func addTimerHandler(input *jsonq.JsonQuery) interface{} {
 
 func deleteTimerHandler(input *jsonq.JsonQuery) interface{} {
 
-	id, _ := input.Int("id")
-	timer := getTimerById(id)
+	tag, _ := input.String("tag")
+	timer := getTimerByTag(tag)
 
 	if timer == nil {
-		tag, _ := input.String("tag")
-		timer = getTimerByTag(tag)
-	}
-
-	if timer == nil {
-		return outJSON(false, id, 2, "timer not found")
+		return outJSON(false, 2, "timer not found")
 	}
 
 	deleteTimer(timer)
 
-	return outJSON(true, id, 0, "timer deleted")
+	return outJSON(true, 0, "timer deleted")
 }
 
 func infoHandler(input *jsonq.JsonQuery) interface{} {
@@ -157,7 +141,7 @@ func infoHandler(input *jsonq.JsonQuery) interface{} {
 		TA int `json:"timersActive"`
 	}{
 		counter,
-		len(timers),
+		len(timersTags),
 	}
 }
 
