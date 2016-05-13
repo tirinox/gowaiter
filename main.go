@@ -154,8 +154,6 @@ func makeHandler(h Handler) web.HandlerType {
 		decoder.Decode(&data)
 		jq := jsonq.NewQuery(data)
 
-		fmt.Printf("request body = %v", data)
-
 		result := h(jq)
 		js, err := json.Marshal(result)
 		if err != nil {
