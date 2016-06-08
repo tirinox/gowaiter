@@ -11,6 +11,7 @@ import (
 	"github.com/jmoiron/jsonq"
 	"github.com/zenazn/goji"
 	"github.com/zenazn/goji/web"
+	"os"
 )
 
 // ------ TIMER MODEL ------
@@ -167,7 +168,12 @@ func makeHandler(h Handler) web.HandlerType {
 
 func main() {
 
-	flag.Set("bind", ":10025")
+	bind := os.Getenv("BIND")
+	if bind == "" {
+		bind = ":10025"
+	}
+
+	flag.Set("bind", bind)
 
 	initTimers()
 
