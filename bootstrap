@@ -1,0 +1,2 @@
+#!/bin/sh
+git pull && sudo ./build && sudo ./run
