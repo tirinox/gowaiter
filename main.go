@@ -36,12 +36,15 @@ func doTimerAction(t *Timer) {
 
 	fmt.Printf("Timer BOOM id = %d\n", t.id)
 
-	_, err := http.Get(t.url)
+	resp, err := http.Get(t.url)
 	if err == nil {
 		fmt.Printf("Timer GET url %s success\n", t.url)
 	} else {
 		fmt.Printf("Timer GET fail; error = %s\n", err)
 	}
+
+	defer resp.Body.Close()
+
 	deleteTimer(t)
 }
 
