@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"time"
 
+	"io/ioutil"
+	"os"
+
 	"github.com/jmoiron/jsonq"
 	"github.com/zenazn/goji"
 	"github.com/zenazn/goji/web"
-	"os"
 )
 
 // ------ TIMER MODEL ------
@@ -32,18 +34,21 @@ func generateId() int {
 	return counter
 }
 
+func getUrl(url string) {
+	resp, err := http.Get(url)
+	if err == nil {
+		fmt.Printf("Timer GET url %s success\n", url)
+		resp.Body.Close()
+	} else {
+		fmt.Printf("Timer GET fail; error = %s\n", err)
+	}
+}
+
 func doTimerAction(t *Timer) {
 
 	fmt.Printf("Timer BOOM id = %d\n", t.id)
 
-	resp, err := http.Get(t.url)
-	if err == nil {
-		fmt.Printf("Timer GET url %s success\n", t.url)
-	} else {
-		fmt.Printf("Timer GET fail; error = %s\n", err)
-	}
-
-	defer resp.Body.Close()
+	getUrl(t.url)
 
 	deleteTimer(t)
 }
@@ -169,6 +174,51 @@ func makeHandler(h Handler) web.HandlerType {
 	}
 }
 
+// ----------- CRON ------------
+
+type CronEntry struct {
+	Period int    `json:"period"`
+	Task   string `json:"task"`
+}
+
+func readCronConfig() []CronEntry {
+
+	var tasks []CronEntry
+
+	raw, err := ioutil.ReadFile("./cron.json")
+	if err != nil {
+		fmt.Println("can't read cron.json")
+		return tasks
+	}
+
+	json.Unmarshal(raw, &tasks)
+	return tasks
+}
+
+func runCron() {
+	tasks := readCronConfig()
+	for _, task := range tasks {
+		if task.Period > 0 {
+			fmt.Printf("Starting CRON task %s with period %d sec\n", task.Task, task.Period)
+			ticker := time.NewTicker(time.Duration(task.Period) * time.Second)
+			url := task.Task // capture by value
+			go func() {
+				for {
+					select {
+					case <- ticker.C:
+						fmt.Printf("CRON task %s starting...\n", url)
+						go func() {
+							getUrl(url)
+						}()
+					}
+				}
+			}()
+		} else {
+			fmt.Printf("period for %s isn't > 0 sec\n", task.Task)
+		}
+	}
+}
+
 func main() {
 
 	bind := os.Getenv("BIND")
@@ -177,6 +227,8 @@ func main() {
 	}
 
 	flag.Set("bind", bind)
+
+	runCron()
 
 	initTimers()
 

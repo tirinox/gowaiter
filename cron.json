@@ -1,0 +1,10 @@
+[
+  {
+    "period":10,
+    "task":"http://nginx/erudite/api/cron.php"
+  },
+  {
+    "period":5,
+    "task":"http://ya.ru"
+  }
+]
