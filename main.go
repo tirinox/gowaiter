@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,15 +17,16 @@ import (
 var scheduler *Scheduler
 var callbacks = newDefaultCallbackClient()
 
-func getURL(rawURL string) {
-	result, err := callbacks.Get(context.Background(), rawURL)
+func getURL(ctx context.Context, source string, rawURL string) {
+	result, err := callbacks.Get(ctx, rawURL)
 	if err != nil {
-		fmt.Printf("Timer GET fail; attempts = %d; error = %s\n", result.Attempts, err)
+		log.Printf("%s GET failed; attempts = %d; error = %s", source, result.Attempts, err)
 		return
 	}
 
-	fmt.Printf(
-		"Timer GET url %s success; status = %d; attempts = %d\n",
+	log.Printf(
+		"%s GET url %s succeeded; status = %d; attempts = %d",
+		source,
 		rawURL,
 		result.StatusCode,
 		result.Attempts,
@@ -35,56 +35,11 @@ func getURL(rawURL string) {
 
 func doTimerAction(t *Timer) {
 	fmt.Printf("Timer BOOM id = %d\n", t.id)
-	getURL(t.url)
+	getURL(context.Background(), "Timer", t.url)
 }
 
 func initTimers() {
 	scheduler = NewScheduler(doTimerAction)
-}
-
-// ----------- CRON ------------
-
-type CronEntry struct {
-	Period int    `json:"period"`
-	Task   string `json:"task"`
-}
-
-func readCronConfig() []CronEntry {
-
-	var tasks []CronEntry
-
-	raw, err := os.ReadFile("./cron.json")
-	if err != nil {
-		fmt.Println("can't read cron.json")
-		return tasks
-	}
-
-	json.Unmarshal(raw, &tasks)
-	return tasks
-}
-
-func runCron() {
-	tasks := readCronConfig()
-	for _, task := range tasks {
-		if task.Period > 0 {
-			fmt.Printf("Starting CRON task %s with period %d sec\n", task.Task, task.Period)
-			ticker := time.NewTicker(time.Duration(task.Period) * time.Second)
-			url := task.Task // capture by value
-			go func() {
-				for {
-					select {
-					case <-ticker.C:
-						fmt.Printf("CRON task %s starting...\n", url)
-						go func() {
-							getURL(url)
-						}()
-					}
-				}
-			}()
-		} else {
-			fmt.Printf("period for %s isn't > 0 sec\n", task.Task)
-		}
-	}
 }
 
 func newHTTPServer(bind string, handler http.Handler) *http.Server {
@@ -126,7 +81,7 @@ func serveUntilShutdown(ctx context.Context, server *http.Server) error {
 	}
 }
 
-func main() {
+func run() error {
 	defer callbacks.CloseIdleConnections()
 
 	defaultBind := os.Getenv("BIND")
@@ -134,17 +89,36 @@ func main() {
 		defaultBind = ":10025"
 	}
 	bind := flag.String("bind", defaultBind, "HTTP listen address")
+	cronConfig := flag.String("cron-config", defaultCronConfigPath, "path to the cron JSON configuration")
 	flag.Parse()
 
-	runCron()
 	initTimers()
-
-	server := newHTTPServer(*bind, NewAPI(scheduler))
 	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	cronEntries, err := LoadCronConfig(*cronConfig)
+	if err != nil {
+		return fmt.Errorf("load CRON configuration: %w", err)
+	}
+	cronRunner := NewCronRunner(cronEntries, func(ctx context.Context, rawURL string) {
+		getURL(ctx, "CRON", rawURL)
+	})
+	cronRunner.Start(shutdownContext)
+
+	server := newHTTPServer(*bind, NewAPI(scheduler))
 	log.Printf("Starting gowaiter on %s", *bind)
-	if err := serveUntilShutdown(shutdownContext, server); err != nil {
-		log.Fatalf("HTTP server failed: %v", err)
+	err = serveUntilShutdown(shutdownContext, server)
+	stop()
+	cronRunner.Wait()
+	if err != nil {
+		return fmt.Errorf("serve HTTP: %w", err)
+	}
+
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
 	}
 }

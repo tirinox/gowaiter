@@ -102,7 +102,19 @@ whole process. Waiting for a concurrency slot does not consume the 30-second
 per-attempt timeout.
 
 Periodic tasks from `cron.json` use the same outbound request behavior. The
-first request occurs after one complete configured period.
+first request occurs after one complete configured period. A task never overlaps
+with itself: if its previous request is still active when another tick occurs,
+that tick is skipped. Separate entries remain independent and may run in
+parallel, subject to the shared limit of 100 outbound operations.
+
+The service validates the complete cron configuration before it starts serving
+HTTP. A missing file, malformed JSON, unknown fields, a non-positive or
+overflowing period, or an invalid task URL prevents startup instead of silently
+disabling the periodic work. An empty JSON array explicitly disables cron jobs.
+Use `-cron-config` to select a file other than `./cron.json`.
+
+On `SIGINT` or `SIGTERM`, cron tickers stop and active cron HTTP requests are
+cancelled before the process exits.
 
 ## Request validation
 
