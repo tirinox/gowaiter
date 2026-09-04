@@ -25,3 +25,7 @@ make docker-run
 
 The service listens on port `10025` by default. Override the host port with
 `make docker-run PORT=8080`.
+
+## Documentation
+
+- [HTTP API contract and outbound URL policy](docs/http-api.md)
