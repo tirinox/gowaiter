@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -105,9 +106,17 @@ func run() error {
 	})
 	cronRunner.Start(shutdownContext)
 
-	server := newHTTPServer(*bind, NewAPI(scheduler))
+	var ready atomic.Bool
+	server := newHTTPServer(*bind, NewAPIWithReadiness(scheduler, ready.Load))
+	ready.Store(true)
+	stopReadiness := context.AfterFunc(shutdownContext, func() {
+		ready.Store(false)
+	})
+	defer stopReadiness()
+
 	log.Printf("Starting gowaiter on %s", *bind)
 	err = serveUntilShutdown(shutdownContext, server)
+	ready.Store(false)
 	stop()
 	cronRunner.Wait()
 	if err != nil {

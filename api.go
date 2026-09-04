@@ -22,6 +22,7 @@ const (
 type API struct {
 	scheduler *Scheduler
 	maxTimers int
+	ready     func() bool
 }
 
 type addTimerRequest struct {
@@ -50,14 +51,31 @@ type infoResponse struct {
 }
 
 func NewAPI(scheduler *Scheduler) *API {
+	return NewAPIWithReadiness(scheduler, func() bool { return true })
+}
+
+func NewAPIWithReadiness(scheduler *Scheduler, ready func() bool) *API {
+	if ready == nil {
+		ready = func() bool { return false }
+	}
+
 	return &API{
 		scheduler: scheduler,
 		maxTimers: defaultMaxTimers,
+		ready:     ready,
 	}
 }
 
 func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	switch r.URL.Path {
+	case "/healthz":
+		api.handleHealth(w, r)
+		return
+	case "/readyz":
+		api.handleReadiness(w, r)
+		return
+	case "/":
+	default:
 		http.NotFound(w, r)
 		return
 	}
@@ -73,6 +91,39 @@ func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "GET, POST, DELETE")
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse(1, "method not allowed"))
 	}
+}
+
+func (api *API) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if !allowProbeMethod(w, r) {
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (api *API) handleReadiness(w http.ResponseWriter, r *http.Request) {
+	if !allowProbeMethod(w, r) {
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	if !api.ready() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
+func allowProbeMethod(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		return true
+	}
+
+	w.Header().Set("Allow", "GET, HEAD")
+	writeJSON(w, http.StatusMethodNotAllowed, errorResponse(1, "method not allowed"))
+	return false
 }
 
 func (api *API) handleAddTimer(w http.ResponseWriter, r *http.Request) {

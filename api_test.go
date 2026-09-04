@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -138,6 +139,44 @@ func TestAPIMethodAndPathHandling(t *testing.T) {
 	response = requestAPI(api, http.MethodGet, "/missing", "")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("unknown path status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+}
+
+func TestHealthAndReadinessProbes(t *testing.T) {
+	var ready atomic.Bool
+	api := NewAPIWithReadiness(NewScheduler(nil), ready.Load)
+
+	response := requestAPI(api, http.MethodGet, "/healthz", "")
+	assertResponse(t, response, http.StatusOK, `{"status":"ok"}`)
+	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "no-store" {
+		t.Fatalf("health Cache-Control = %q, want no-store", cacheControl)
+	}
+
+	response = requestAPI(api, http.MethodGet, "/readyz", "")
+	assertResponse(t, response, http.StatusServiceUnavailable, `{"status":"not_ready"}`)
+
+	ready.Store(true)
+	response = requestAPI(api, http.MethodGet, "/readyz", "")
+	assertResponse(t, response, http.StatusOK, `{"status":"ready"}`)
+
+	ready.Store(false)
+	response = requestAPI(api, http.MethodHead, "/readyz", "")
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("HEAD readiness status = %d, want %d", response.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestProbeMethodHandling(t *testing.T) {
+	api := NewAPI(NewScheduler(nil))
+
+	for _, path := range []string{"/healthz", "/readyz"} {
+		response := requestAPI(api, http.MethodPost, path, `{}`)
+		if response.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("POST %s status = %d, want %d", path, response.Code, http.StatusMethodNotAllowed)
+		}
+		if allow := response.Header().Get("Allow"); allow != "GET, HEAD" {
+			t.Fatalf("POST %s Allow = %q, want GET, HEAD", path, allow)
+		}
 	}
 }
 

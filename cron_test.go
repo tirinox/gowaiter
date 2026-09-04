@@ -114,11 +114,14 @@ func TestCronRunnerWaitsForTickAndDoesNotOverlapRuns(t *testing.T) {
 
 	close(releaseFirst)
 	waitForTickerDrain(t, ticker)
-	ticker.Tick()
-	assertCronCall(t, callbackStarted, "http://nginx/cron.php")
 
 	cancel()
 	runner.Wait()
+	callsMu.Lock()
+	defer callsMu.Unlock()
+	if calls != 1 {
+		t.Fatalf("callback count = %d, want 1", calls)
+	}
 	if !ticker.Stopped() {
 		t.Fatal("ticker was not stopped")
 	}

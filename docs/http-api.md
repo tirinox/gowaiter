@@ -85,6 +85,27 @@ Successful response (`200 OK`):
   callback is still running remains active until the callback finishes, unless
   it is explicitly deleted or replaced.
 
+## Health and readiness
+
+`GET` and `HEAD` are supported for both probe endpoints. Probe responses are
+not cacheable.
+
+`GET /healthz` is a liveness check. It returns `200 OK` while the HTTP process
+is running:
+
+```json
+{"status":"ok"}
+```
+
+`GET /readyz` reports whether initialization has completed and the service is
+ready to accept timer requests. It returns `200 OK` with
+`{"status":"ready"}` during normal operation and `503 Service Unavailable`
+with `{"status":"not_ready"}` during shutdown.
+
+Readiness intentionally does not invoke nginx or `cron.php`: that endpoint runs
+application work and must not be used as a side-effect-free dependency probe.
+The container image uses `/readyz` for its Docker health check.
+
 ## Callback behavior
 
 When a timer fires, the service sends an HTTP `GET` request to its URL. A `2xx`
