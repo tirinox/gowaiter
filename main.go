@@ -16,23 +16,7 @@ import (
 	"github.com/zenazn/goji/web"
 )
 
-// ------ TIMER MODEL ------
-
-type Timer struct {
-	id     int
-	tag    string
-	delay  int
-	active bool
-	url    string
-}
-
-var counter int
-var timersTags map[string]*Timer
-
-func generateId() int {
-	counter++
-	return counter
-}
+var scheduler *Scheduler
 
 func getUrl(url string) {
 	resp, err := http.Get(url)
@@ -45,41 +29,12 @@ func getUrl(url string) {
 }
 
 func doTimerAction(t *Timer) {
-
 	fmt.Printf("Timer BOOM id = %d\n", t.id)
-
 	getUrl(t.url)
-
-	deleteTimer(t)
-}
-
-func getTimerByTag(tag string) *Timer {
-	t, ok := timersTags[tag]
-	if ok {
-		return t
-	} else {
-		return nil
-	}
-}
-
-func setTimer(t *Timer) {
-	fmt.Printf("SetTimer id = %d for %d sec; tag = %v\n", t.id, t.delay, t.tag)
-	timersTags[t.tag] = t
-	time.AfterFunc(time.Duration(t.delay)*time.Second, func() {
-		if t.active {
-			doTimerAction(t)
-		}
-	})
-}
-
-func deleteTimer(t *Timer) {
-	t.active = false
-	delete(timersTags, t.tag)
 }
 
 func initTimers() {
-	counter = 0
-	timersTags = make(map[string]*Timer)
+	scheduler = NewScheduler(doTimerAction)
 }
 
 // --------- HANDLERS ----------
@@ -110,20 +65,8 @@ func addTimerHandler(input *jsonq.JsonQuery) interface{} {
 	tag, _ := input.String("tag")
 	url, _ := input.String("url")
 
-	oldTimer := getTimerByTag(tag)
-	if oldTimer != nil {
-		deleteTimer(oldTimer)
-	}
-
-	timer := Timer{
-		id:     generateId(),
-		tag:    tag,
-		delay:  delay,
-		active: true,
-		url:    url,
-	}
-
-	setTimer(&timer)
+	timer := scheduler.Add(tag, time.Duration(delay)*time.Second, url)
+	fmt.Printf("SetTimer id = %d for %d sec; tag = %v\n", timer.id, delay, timer.tag)
 
 	return struct {
 		Id int `json:"id"`
@@ -133,24 +76,21 @@ func addTimerHandler(input *jsonq.JsonQuery) interface{} {
 func deleteTimerHandler(input *jsonq.JsonQuery) interface{} {
 
 	tag, _ := input.String("tag")
-	timer := getTimerByTag(tag)
-
-	if timer == nil {
+	if !scheduler.Delete(tag) {
 		return outJSON(false, 2, "timer not found")
 	}
-
-	deleteTimer(timer)
 
 	return outJSON(true, 0, "timer deleted")
 }
 
 func infoHandler(input *jsonq.JsonQuery) interface{} {
+	maxCounter, timersActive := scheduler.Stats()
 	return struct {
 		MC int `json:"maxCounter"`
 		TA int `json:"timersActive"`
 	}{
-		counter,
-		len(timersTags),
+		maxCounter,
+		timersActive,
 	}
 }
 
