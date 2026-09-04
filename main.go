@@ -39,8 +39,8 @@ func doTimerAction(t *Timer) {
 	getURL(context.Background(), "Timer", t.url)
 }
 
-func initTimers() {
-	scheduler = NewScheduler(doTimerAction)
+func initTimers(store TimerStore) {
+	scheduler = NewPersistentScheduler(doTimerAction, store)
 }
 
 func newHTTPServer(bind string, handler http.Handler) *http.Server {
@@ -89,18 +89,35 @@ func run() error {
 	if defaultBind == "" {
 		defaultBind = ":10025"
 	}
+	defaultTimerDatabase := os.Getenv("TIMER_DB")
+	if defaultTimerDatabase == "" {
+		defaultTimerDatabase = "./gowaiter.db"
+	}
 	bind := flag.String("bind", defaultBind, "HTTP listen address")
 	cronConfig := flag.String("cron-config", defaultCronConfigPath, "path to the cron JSON configuration")
+	timerDatabase := flag.String("timer-db", defaultTimerDatabase, "path to the persistent timer database")
 	flag.Parse()
-
-	initTimers()
-	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	cronEntries, err := LoadCronConfig(*cronConfig)
 	if err != nil {
 		return fmt.Errorf("load CRON configuration: %w", err)
 	}
+	timerStore, err := OpenBoltTimerStore(*timerDatabase)
+	if err != nil {
+		return err
+	}
+	initTimers(timerStore)
+	restored, ignored, err := scheduler.Restore(defaultPersistedTimerMaxAge, defaultMaxTimers)
+	if err != nil {
+		scheduler.Shutdown()
+		_ = timerStore.Close()
+		return fmt.Errorf("restore persisted timers: %w", err)
+	}
+	log.Printf("Persistent timers restored=%d ignored=%d", restored, ignored)
+
+	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	cronRunner := NewCronRunner(cronEntries, func(ctx context.Context, rawURL string) {
 		getURL(ctx, "CRON", rawURL)
 	})
@@ -119,8 +136,13 @@ func run() error {
 	ready.Store(false)
 	stop()
 	cronRunner.Wait()
+	scheduler.Shutdown()
+	closeError := timerStore.Close()
 	if err != nil {
 		return fmt.Errorf("serve HTTP: %w", err)
+	}
+	if closeError != nil {
+		return closeError
 	}
 
 	return nil

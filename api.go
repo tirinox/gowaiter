@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -139,7 +140,12 @@ func (api *API) handleAddTimer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	timer, ok := api.scheduler.AddWithLimit(tag, delay, targetURL, api.maxTimers)
+	timer, ok, err := api.scheduler.AddWithLimit(tag, delay, targetURL, api.maxTimers)
+	if err != nil {
+		log.Printf("Failed to persist timer tag=%q: %v", tag, err)
+		writeJSON(w, http.StatusInternalServerError, errorResponse(1, "timer storage failed"))
+		return
+	}
 	if !ok {
 		writeJSON(w, http.StatusTooManyRequests, errorResponse(1, "active timer limit reached"))
 		return
@@ -165,7 +171,13 @@ func (api *API) handleDeleteTimer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !api.scheduler.Delete(*input.Tag) {
+	deleted, err := api.scheduler.Delete(*input.Tag)
+	if err != nil {
+		log.Printf("Failed to delete persisted timer tag=%q: %v", *input.Tag, err)
+		writeJSON(w, http.StatusInternalServerError, errorResponse(1, "timer storage failed"))
+		return
+	}
+	if !deleted {
 		// Keep the legacy HTTP status and response body for existing clients.
 		writeJSON(w, http.StatusOK, errorResponse(2, "timer not found"))
 		return

@@ -5,6 +5,7 @@ BIN := $(BIN_DIR)/$(APP_NAME)
 IMAGE ?= tirinox/gowaiter
 CONTAINER ?= gowaiter_instance
 PORT ?= 10025
+DATA_VOLUME ?= gowaiter_data
 
 GO ?= go
 GOTOOLCHAIN ?= auto
@@ -36,7 +37,7 @@ help:
 	@echo ""
 	@echo "Docker:"
 	@echo "  docker-build  Build the Docker image ($(IMAGE))"
-	@echo "  docker-run    Run the Docker image on port $(PORT)"
+	@echo "  docker-run    Run the Docker image on port $(PORT) with persistent timer data"
 
 all: check build
 
@@ -84,7 +85,8 @@ docker-build:
 	docker build --pull -t $(IMAGE) .
 
 docker-run:
-	docker run --rm --name $(CONTAINER) -p $(PORT):10025 $(IMAGE)
+	docker run --rm --name $(CONTAINER) -p $(PORT):10025 \
+		-v $(DATA_VOLUME):/data $(IMAGE)
 
 clean:
 	$(RM) -r $(BIN_DIR)

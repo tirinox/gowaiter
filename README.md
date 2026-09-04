@@ -26,6 +26,24 @@ make docker-run
 The service listens on port `10025` by default. Override the host port with
 `make docker-run PORT=8080`.
 
+Delayed timers are stored in an embedded BoltDB database. Local runs use
+`./gowaiter.db`; set `TIMER_DB` or pass `-timer-db` to choose another path. The
+Docker image uses `/data/gowaiter.db`, and `make docker-run` attaches the named
+volume `gowaiter_data` by default. Override it with
+`make docker-run DATA_VOLUME=my_volume`.
+
+Compose deployments should mount the same path explicitly:
+
+```yaml
+services:
+  gowaiter:
+    volumes:
+      - gowaiter_data:/data
+
+volumes:
+  gowaiter_data:
+```
+
 ## Periodic PHP cron
 
 `gowaiter` does not execute PHP itself. Each configured period it performs the

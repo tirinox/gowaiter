@@ -29,3 +29,4 @@ _testmain.go
 
 # Local build output
 .bin/
+*.db

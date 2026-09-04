@@ -13,7 +13,7 @@ func TestSchedulerFireRunsActionAndRemovesTimer(t *testing.T) {
 		fired = timer
 	})
 
-	timer := scheduler.Add("tag", time.Hour, "https://example.test")
+	timer := addTestTimer(t, scheduler, "tag", time.Hour, "https://example.test")
 	scheduler.fire(timer)
 
 	if fired != timer {
@@ -34,7 +34,7 @@ func TestSchedulerTimerFires(t *testing.T) {
 		fired <- timer
 	})
 
-	timer := scheduler.Add("tag", 0, "https://example.test")
+	timer := addTestTimer(t, scheduler, "tag", 0, "https://example.test")
 	select {
 	case got := <-fired:
 		if got != timer {
@@ -63,8 +63,8 @@ func TestSchedulerReplaceStopsOldTimer(t *testing.T) {
 		fired = append(fired, timer)
 	})
 
-	old := scheduler.Add("tag", time.Hour, "https://old.example.test")
-	replacement := scheduler.Add("tag", time.Hour, "https://new.example.test")
+	old := addTestTimer(t, scheduler, "tag", time.Hour, "https://old.example.test")
+	replacement := addTestTimer(t, scheduler, "tag", time.Hour, "https://new.example.test")
 
 	if old.timer != nil {
 		t.Fatal("replaced timer was not stopped")
@@ -92,7 +92,7 @@ func TestSchedulerOldActionDoesNotDeleteReplacement(t *testing.T) {
 		<-release
 	})
 
-	old := scheduler.Add("tag", time.Hour, "https://old.example.test")
+	old := addTestTimer(t, scheduler, "tag", time.Hour, "https://old.example.test")
 	done := make(chan struct{})
 	go func() {
 		scheduler.fire(old)
@@ -104,7 +104,7 @@ func TestSchedulerOldActionDoesNotDeleteReplacement(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("old timer action did not start")
 	}
-	replacement := scheduler.Add("tag", time.Hour, "https://new.example.test")
+	replacement := addTestTimer(t, scheduler, "tag", time.Hour, "https://new.example.test")
 	close(release)
 	select {
 	case <-done:
@@ -115,7 +115,7 @@ func TestSchedulerOldActionDoesNotDeleteReplacement(t *testing.T) {
 	if got := scheduler.timerByTag("tag"); got != replacement {
 		t.Fatalf("old action removed replacement: got %p, want %p", got, replacement)
 	}
-	scheduler.Delete("tag")
+	_, _ = scheduler.Delete("tag")
 }
 
 func TestSchedulerDeleteStopsTimer(t *testing.T) {
@@ -124,11 +124,13 @@ func TestSchedulerDeleteStopsTimer(t *testing.T) {
 		fired = true
 	})
 
-	timer := scheduler.Add("tag", time.Hour, "https://example.test")
-	if !scheduler.Delete("tag") {
+	timer := addTestTimer(t, scheduler, "tag", time.Hour, "https://example.test")
+	deleted, err := scheduler.Delete("tag")
+	if err != nil || !deleted {
 		t.Fatal("Delete() = false, want true")
 	}
-	if scheduler.Delete("tag") {
+	deleted, err = scheduler.Delete("tag")
+	if err != nil || deleted {
 		t.Fatal("second Delete() = true, want false")
 	}
 	if timer.timer != nil {
@@ -144,22 +146,22 @@ func TestSchedulerDeleteStopsTimer(t *testing.T) {
 func TestSchedulerAddWithLimit(t *testing.T) {
 	scheduler := NewScheduler(nil)
 
-	first, ok := scheduler.AddWithLimit("first", time.Hour, "https://example.test", 1)
-	if !ok || first == nil {
+	first, ok, err := scheduler.AddWithLimit("first", time.Hour, "https://example.test", 1)
+	if err != nil || !ok || first == nil {
 		t.Fatal("first timer was rejected")
 	}
-	if timer, ok := scheduler.AddWithLimit("second", time.Hour, "https://example.test", 1); ok || timer != nil {
+	if timer, ok, err := scheduler.AddWithLimit("second", time.Hour, "https://example.test", 1); err != nil || ok || timer != nil {
 		t.Fatal("timer above the active limit was accepted")
 	}
 
-	replacement, ok := scheduler.AddWithLimit("first", time.Hour, "https://example.test", 1)
-	if !ok || replacement == nil {
+	replacement, ok, err := scheduler.AddWithLimit("first", time.Hour, "https://example.test", 1)
+	if err != nil || !ok || replacement == nil {
 		t.Fatal("replacement at the active limit was rejected")
 	}
 	if first.timer != nil {
 		t.Fatal("replaced timer was not stopped")
 	}
-	scheduler.Delete("first")
+	_, _ = scheduler.Delete("first")
 }
 
 func TestSchedulerConcurrentAccess(t *testing.T) {
@@ -176,11 +178,16 @@ func TestSchedulerConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < timersPerWorker; i++ {
 				tag := fmt.Sprintf("%d-%d", worker, i)
-				timer := scheduler.Add(tag, time.Hour, "https://example.test")
+				timer, err := scheduler.Add(tag, time.Hour, "https://example.test")
+				if err != nil {
+					t.Errorf("Add(%q) error = %v", tag, err)
+					continue
+				}
 				ids <- timer.id
 				_ = scheduler.timerByTag(tag)
 				_, _ = scheduler.Stats()
-				if !scheduler.Delete(tag) {
+				deleted, err := scheduler.Delete(tag)
+				if err != nil || !deleted {
 					t.Errorf("Delete(%q) = false, want true", tag)
 				}
 			}
@@ -206,4 +213,13 @@ func TestSchedulerConcurrentAccess(t *testing.T) {
 			workers*timersPerWorker,
 		)
 	}
+}
+
+func addTestTimer(t *testing.T, scheduler *Scheduler, tag string, delay time.Duration, url string) *Timer {
+	t.Helper()
+	timer, err := scheduler.Add(tag, delay, url)
+	if err != nil {
+		t.Fatalf("Add(%q) error = %v", tag, err)
+	}
+	return timer
 }

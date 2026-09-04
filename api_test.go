@@ -38,7 +38,7 @@ func TestAPICompatibility(t *testing.T) {
 func TestAPIAllowsUnknownJSONFieldsForCompatibility(t *testing.T) {
 	scheduler := NewScheduler(nil)
 	api := NewAPI(scheduler)
-	t.Cleanup(func() { scheduler.Delete("demo") })
+	t.Cleanup(func() { _, _ = scheduler.Delete("demo") })
 
 	response := requestAPI(
 		api,
@@ -112,7 +112,7 @@ func TestAPILimitsActiveTimersWithoutBlockingReplacement(t *testing.T) {
 	scheduler := NewScheduler(nil)
 	api := NewAPI(scheduler)
 	api.maxTimers = 1
-	t.Cleanup(func() { scheduler.Delete("first") })
+	t.Cleanup(func() { _, _ = scheduler.Delete("first") })
 
 	first := `{"tag":"first","delay":3600,"url":"http://localhost/task"}`
 	second := `{"tag":"second","delay":3600,"url":"http://localhost/task"}`
@@ -123,6 +123,45 @@ func TestAPILimitsActiveTimersWithoutBlockingReplacement(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusTooManyRequests)
 	}
 	assertResponse(t, requestAPI(api, http.MethodPost, "/", first), http.StatusOK, `{"id":2}`)
+}
+
+func TestAPIReportsTimerStorageFailures(t *testing.T) {
+	store := newMemoryTimerStore()
+	store.putError = fmt.Errorf("disk full")
+	scheduler := NewPersistentScheduler(nil, store)
+	api := NewAPI(scheduler)
+
+	response := requestAPI(
+		api,
+		http.MethodPost,
+		"/",
+		`{"tag":"demo","delay":60,"url":"http://localhost/task"}`,
+	)
+	assertResponse(
+		t,
+		response,
+		http.StatusInternalServerError,
+		`{"result":"error","message":"timer storage failed","code":1}`,
+	)
+	if timer := scheduler.timerByTag("demo"); timer != nil {
+		t.Fatal("timer was activated after storage failure")
+	}
+
+	store.putError = nil
+	addTestTimer(t, scheduler, "demo", time.Hour, "http://localhost/task")
+	store.deleteError = fmt.Errorf("read-only database")
+	response = requestAPI(api, http.MethodDelete, "/", `{"tag":"demo"}`)
+	assertResponse(
+		t,
+		response,
+		http.StatusInternalServerError,
+		`{"result":"error","message":"timer storage failed","code":1}`,
+	)
+	if timer := scheduler.timerByTag("demo"); timer == nil {
+		t.Fatal("timer was removed after storage failure")
+	}
+	store.deleteError = nil
+	scheduler.Shutdown()
 }
 
 func TestAPIMethodAndPathHandling(t *testing.T) {

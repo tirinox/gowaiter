@@ -20,12 +20,18 @@ FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates \
     && addgroup -S gowaiter \
-    && adduser -S -G gowaiter gowaiter
+    && adduser -S -G gowaiter gowaiter \
+    && mkdir -p /data \
+    && chown gowaiter:gowaiter /data
 
 WORKDIR /app
 
 COPY --from=build /out/gowaiter /usr/local/bin/gowaiter
 COPY cron.json ./cron.json
+
+ENV TIMER_DB=/data/gowaiter.db
+
+VOLUME ["/data"]
 
 USER gowaiter
 

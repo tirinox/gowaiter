@@ -13,8 +13,9 @@ outbound network policy enforced for callbacks and periodic tasks.
 The service listens on `:10025` by default. The `BIND` environment variable can
 override the complete listen address.
 
-All current operations use the `/` path. Request and response bodies use JSON.
-Timers exist only in process memory and are lost when the service restarts.
+Timer operations use the `/` path; health probes use `/healthz` and `/readyz`.
+Request and response bodies use JSON. Timers are stored in an embedded BoltDB
+database and restored after a normal or unexpected process restart.
 
 ## Create or replace a timer
 
@@ -37,6 +38,22 @@ Fields:
 
 Creating a timer with an existing tag stops and replaces the previous timer.
 Timer IDs increase monotonically for the lifetime of the process.
+
+The database stores the tag, callback URL, creation time, and due time. After a
+restart, a future timer resumes with its remaining delay. A timer whose due time
+has already passed runs immediately, provided it is not stale. Timers older than
+one hour from their original creation time are logged, removed from storage, and
+not executed. Replacement does not inherit the old timer's creation time.
+
+Completed timers are removed from storage after their callback finishes. This
+provides simple at-least-once recovery: if the process stops during a callback,
+the timer may run again after restart. Callback handlers should therefore remain
+idempotent.
+
+The local database path defaults to `./gowaiter.db` and can be changed with
+`TIMER_DB` or `-timer-db`. The container defaults to `/data/gowaiter.db`; `/data`
+must be backed by a persistent Docker volume for recovery across container
+replacement.
 
 Current successful response (`200 OK`):
 
