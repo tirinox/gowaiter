@@ -205,7 +205,7 @@ func runCron() {
 			go func() {
 				for {
 					select {
-					case <- ticker.C:
+					case <-ticker.C:
 						fmt.Printf("CRON task %s starting...\n", url)
 						go func() {
 							getUrl(url)

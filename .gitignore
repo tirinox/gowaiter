@@ -26,3 +26,6 @@ _testmain.go
 *.prof
 
 .idea
+
+# Local build output
+.bin/

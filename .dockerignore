@@ -1,0 +1,13 @@
+.git
+.gitignore
+.idea
+.DS_Store
+
+.bin
+*.test
+*.prof
+coverage.out
+
+bootstrap
+build
+run
