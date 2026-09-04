@@ -16,20 +16,26 @@ import (
 )
 
 var scheduler *Scheduler
+var callbacks = newDefaultCallbackClient()
 
-func getUrl(url string) {
-	resp, err := http.Get(url)
-	if err == nil {
-		fmt.Printf("Timer GET url %s success\n", url)
-		resp.Body.Close()
-	} else {
-		fmt.Printf("Timer GET fail; error = %s\n", err)
+func getURL(rawURL string) {
+	result, err := callbacks.Get(context.Background(), rawURL)
+	if err != nil {
+		fmt.Printf("Timer GET fail; attempts = %d; error = %s\n", result.Attempts, err)
+		return
 	}
+
+	fmt.Printf(
+		"Timer GET url %s success; status = %d; attempts = %d\n",
+		rawURL,
+		result.StatusCode,
+		result.Attempts,
+	)
 }
 
 func doTimerAction(t *Timer) {
 	fmt.Printf("Timer BOOM id = %d\n", t.id)
-	getUrl(t.url)
+	getURL(t.url)
 }
 
 func initTimers() {
@@ -70,7 +76,7 @@ func runCron() {
 					case <-ticker.C:
 						fmt.Printf("CRON task %s starting...\n", url)
 						go func() {
-							getUrl(url)
+							getURL(url)
 						}()
 					}
 				}
@@ -121,6 +127,8 @@ func serveUntilShutdown(ctx context.Context, server *http.Server) error {
 }
 
 func main() {
+	defer callbacks.CloseIdleConnections()
+
 	defaultBind := os.Getenv("BIND")
 	if defaultBind == "" {
 		defaultBind = ":10025"

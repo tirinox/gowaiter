@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -171,17 +170,8 @@ func validateAddTimerRequest(input addTimerRequest) (string, time.Duration, stri
 		return "", 0, "", errors.New("url is invalid")
 	}
 
-	parsedURL, err := url.ParseRequestURI(*input.URL)
-	if err != nil || !parsedURL.IsAbs() || parsedURL.Host == "" {
-		return "", 0, "", errors.New("url must be an absolute HTTP or HTTPS URL")
-	}
-	if parsedURL.User != nil {
-		return "", 0, "", errors.New("url must not contain credentials")
-	}
-	switch strings.ToLower(parsedURL.Scheme) {
-	case "http", "https":
-	default:
-		return "", 0, "", errors.New("url must use HTTP or HTTPS")
+	if _, err := parseHTTPURL(*input.URL); err != nil {
+		return "", 0, "", err
 	}
 
 	return *input.Tag, time.Duration(*input.Delay) * time.Second, *input.URL, nil

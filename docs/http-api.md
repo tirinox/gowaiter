@@ -1,13 +1,12 @@
 # HTTP API contract
 
 This document records the compatibility baseline for the existing API and the
-outbound network policy that will be enforced during outbound HTTP hardening.
+outbound network policy enforced for callbacks and periodic tasks.
 
 > [!IMPORTANT]
-> Inbound request validation and server protections are enforced. The outbound
-> address restrictions below are still the target contract: URL syntax is
-> validated, but resolved IP addresses are not filtered yet. The service must
-> not be exposed to untrusted clients before outbound filtering is complete.
+> Application-level address filtering is enforced, but deployment must still
+> place the service in an isolated Docker network. Private address ranges may
+> include infrastructure other than Docker when the host routes to it.
 
 ## Service endpoint
 
@@ -88,9 +87,19 @@ Successful response (`200 OK`):
 
 ## Callback behavior
 
-When a timer fires, the service sends an HTTP `GET` request to its URL. The
-response body is ignored. The timer is removed after the request finishes,
-regardless of whether the request succeeded. There are currently no retries.
+When a timer fires, the service sends an HTTP `GET` request to its URL. A `2xx`
+response is considered successful. Response bodies are discarded up to 64 KiB
+and always closed. The timer is removed after the callback finishes, regardless
+of whether it succeeded.
+
+Each attempt has a 30-second timeout. A callback makes at most three attempts.
+The pauses before the second and third attempts are one and two seconds
+respectively. Retries occur for network errors and HTTP `408`, `425`, `429`, and
+`5xx` responses. Other `3xx` or `4xx` responses fail without retrying.
+
+At most 100 callback or cron operations may execute concurrently across the
+whole process. Waiting for a concurrency slot does not consume the 30-second
+per-attempt timeout.
 
 Periodic tasks from `cron.json` use the same outbound request behavior. The
 first request occurs after one complete configured period.
@@ -118,8 +127,8 @@ contain exactly one JSON object; trailing JSON values are rejected.
 
 ## Outbound URL policy
 
-By default, callback and cron URLs may use only `http` or `https` and must
-resolve exclusively to one of these address groups:
+Callback and cron URLs may use only `http` or `https` and must resolve
+exclusively to one of these address groups:
 
 - IPv4 loopback: `127.0.0.0/8`;
 - IPv6 loopback: `::1/128`;
@@ -135,6 +144,9 @@ This permits URLs such as:
 - `http://worker:9000/run`, when `worker` is attached to the same isolated
   Docker network.
 
+Inside a container, `localhost` and loopback addresses refer to that container,
+not to the Docker host.
+
 The following targets are rejected by default:
 
 - public IP addresses and hostnames resolving to public addresses;
@@ -145,13 +157,14 @@ The following targets are rejected by default:
 - URLs containing credentials;
 - schemes other than `http` and `https`.
 
-Security checks must be applied to the resolved dial address, not only to the
+Security checks are applied to the resolved dial address, not only to the
 hostname text. A hostname with a mixture of allowed and forbidden addresses is
 rejected. IPv4-mapped IPv6 addresses are normalized before validation.
 
 Every redirect target is validated with the same rules. DNS resolution and
-dialing must be coupled so that DNS rebinding cannot replace a validated private
-address with a public or link-local address before connection.
+dialing are coupled so that DNS rebinding cannot replace a validated private
+address with a public or link-local address before connection. Environment HTTP
+proxies are disabled so they cannot bypass address validation.
 
 Application-level filtering treats RFC 1918 and IPv6 unique-local ranges as
 the default private Docker address space. Deployment must additionally place
