@@ -28,10 +28,19 @@ func NewScheduler(action func(*Timer)) *Scheduler {
 }
 
 func (s *Scheduler) Add(tag string, delay time.Duration, url string) *Timer {
+	timer, _ := s.AddWithLimit(tag, delay, url, 0)
+	return timer
+}
+
+func (s *Scheduler) AddWithLimit(tag string, delay time.Duration, url string, maxActive int) (*Timer, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if old := s.timers[tag]; old != nil {
+	old := s.timers[tag]
+	if old == nil && maxActive > 0 && len(s.timers) >= maxActive {
+		return nil, false
+	}
+	if old != nil {
 		s.stopTimerLocked(old)
 	}
 
@@ -48,7 +57,7 @@ func (s *Scheduler) Add(tag string, delay time.Duration, url string) *Timer {
 		s.fire(timer)
 	})
 
-	return timer
+	return timer, true
 }
 
 func (s *Scheduler) Delete(tag string) bool {

@@ -1,12 +1,13 @@
 # HTTP API contract
 
 This document records the compatibility baseline for the existing API and the
-outbound network policy that will be enforced during HTTP hardening.
+outbound network policy that will be enforced during outbound HTTP hardening.
 
 > [!IMPORTANT]
-> The outbound URL restrictions below are the target contract. The current
-> implementation does not enforce them yet and must not be exposed to untrusted
-> clients before that work is complete.
+> Inbound request validation and server protections are enforced. The outbound
+> address restrictions below are still the target contract: URL syntax is
+> validated, but resolved IP addresses are not filtered yet. The service must
+> not be exposed to untrusted clients before outbound filtering is complete.
 
 ## Service endpoint
 
@@ -65,8 +66,8 @@ Current response when the tag does not exist (`200 OK`):
 {"result":"error","message":"timer not found","code":2}
 ```
 
-The HTTP-hardening stage will change the missing-timer status to `404 Not
-Found`, while retaining a structured JSON error body.
+The legacy `200 OK` status for an unknown tag is intentionally preserved for
+existing clients.
 
 ## Service information
 
@@ -94,19 +95,26 @@ regardless of whether the request succeeded. There are currently no retries.
 Periodic tasks from `cron.json` use the same outbound request behavior. The
 first request occurs after one complete configured period.
 
-## Target request validation
+## Request validation
 
-The HTTP-hardening stage will enforce the following rules:
+Correct requests retain the legacy status codes and response bodies. Invalid
+requests use the same structured error body and may return an HTTP error:
 
 - malformed JSON returns `400 Bad Request`;
 - missing or incorrectly typed fields return `400 Bad Request`;
-- invalid field values return `422 Unprocessable Entity`;
-- an unknown timer passed to `DELETE` returns `404 Not Found`;
-- request bodies, tag length, delay, and total active timers have explicit
-  limits;
+- invalid field values return `400 Bad Request`;
+- an unknown timer passed to `DELETE` retains the legacy `200 OK` response;
+- request bodies are limited to 64 KiB;
+- tags must be non-empty valid UTF-8 and no longer than 256 bytes;
+- delays must be integer seconds from 0 through 31,536,000 (365 days);
+- URLs must be absolute `http` or `https` URLs, contain no credentials, and be
+  no longer than 4,096 bytes;
+- at most 10,000 distinct tags may be active; replacing an existing tag remains
+  possible at the limit, while a new tag returns `429 Too Many Requests`;
 - unsupported HTTP methods return `405 Method Not Allowed`.
 
-Exact value limits will be defined alongside the implementation.
+Unknown JSON fields remain accepted for compatibility. A request body must
+contain exactly one JSON object; trailing JSON values are rejected.
 
 ## Outbound URL policy
 

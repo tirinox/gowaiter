@@ -141,6 +141,27 @@ func TestSchedulerDeleteStopsTimer(t *testing.T) {
 	}
 }
 
+func TestSchedulerAddWithLimit(t *testing.T) {
+	scheduler := NewScheduler(nil)
+
+	first, ok := scheduler.AddWithLimit("first", time.Hour, "https://example.test", 1)
+	if !ok || first == nil {
+		t.Fatal("first timer was rejected")
+	}
+	if timer, ok := scheduler.AddWithLimit("second", time.Hour, "https://example.test", 1); ok || timer != nil {
+		t.Fatal("timer above the active limit was accepted")
+	}
+
+	replacement, ok := scheduler.AddWithLimit("first", time.Hour, "https://example.test", 1)
+	if !ok || replacement == nil {
+		t.Fatal("replacement at the active limit was rejected")
+	}
+	if first.timer != nil {
+		t.Fatal("replaced timer was not stopped")
+	}
+	scheduler.Delete("first")
+}
+
 func TestSchedulerConcurrentAccess(t *testing.T) {
 	const workers = 16
 	const timersPerWorker = 50

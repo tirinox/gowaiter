@@ -2,18 +2,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
-	"time"
-
-	"io/ioutil"
 	"os"
-
-	"github.com/jmoiron/jsonq"
-	"github.com/zenazn/goji"
-	"github.com/zenazn/goji/web"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 var scheduler *Scheduler
@@ -37,83 +36,6 @@ func initTimers() {
 	scheduler = NewScheduler(doTimerAction)
 }
 
-// --------- HANDLERS ----------
-
-type Handler func(input *jsonq.JsonQuery) interface{}
-
-func outJSON(ok bool, code int, message string) interface{} {
-	var result string
-	if ok {
-		result = "ok"
-	} else {
-		result = "error"
-	}
-	return struct {
-		Result  string `json:"result"`
-		Message string `json:"message"`
-		Code    int    `json:"code"`
-	}{
-		result,
-		message,
-		code,
-	}
-}
-
-func addTimerHandler(input *jsonq.JsonQuery) interface{} {
-
-	delay, _ := input.Int("delay")
-	tag, _ := input.String("tag")
-	url, _ := input.String("url")
-
-	timer := scheduler.Add(tag, time.Duration(delay)*time.Second, url)
-	fmt.Printf("SetTimer id = %d for %d sec; tag = %v\n", timer.id, delay, timer.tag)
-
-	return struct {
-		Id int `json:"id"`
-	}{timer.id}
-}
-
-func deleteTimerHandler(input *jsonq.JsonQuery) interface{} {
-
-	tag, _ := input.String("tag")
-	if !scheduler.Delete(tag) {
-		return outJSON(false, 2, "timer not found")
-	}
-
-	return outJSON(true, 0, "timer deleted")
-}
-
-func infoHandler(input *jsonq.JsonQuery) interface{} {
-	maxCounter, timersActive := scheduler.Stats()
-	return struct {
-		MC int `json:"maxCounter"`
-		TA int `json:"timersActive"`
-	}{
-		maxCounter,
-		timersActive,
-	}
-}
-
-// ----------- API ------------
-
-func makeHandler(h Handler) web.HandlerType {
-	return func(c web.C, w http.ResponseWriter, r *http.Request) {
-		data := map[string]interface{}{}
-		decoder := json.NewDecoder(r.Body)
-		decoder.Decode(&data)
-		jq := jsonq.NewQuery(data)
-
-		result := h(jq)
-		js, err := json.Marshal(result)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(js)
-	}
-}
-
 // ----------- CRON ------------
 
 type CronEntry struct {
@@ -125,7 +47,7 @@ func readCronConfig() []CronEntry {
 
 	var tasks []CronEntry
 
-	raw, err := ioutil.ReadFile("./cron.json")
+	raw, err := os.ReadFile("./cron.json")
 	if err != nil {
 		fmt.Println("can't read cron.json")
 		return tasks
@@ -159,21 +81,62 @@ func runCron() {
 	}
 }
 
-func main() {
-
-	bind := os.Getenv("BIND")
-	if bind == "" {
-		bind = ":10025"
+func newHTTPServer(bind string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              bind,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
+}
 
-	flag.Set("bind", bind)
+func serveUntilShutdown(ctx context.Context, server *http.Server) error {
+	serverError := make(chan error, 1)
+	go func() {
+		serverError <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverError:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		shutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownContext); err != nil {
+			return fmt.Errorf("shut down HTTP server: %w", err)
+		}
+
+		err := <-serverError
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	}
+}
+
+func main() {
+	defaultBind := os.Getenv("BIND")
+	if defaultBind == "" {
+		defaultBind = ":10025"
+	}
+	bind := flag.String("bind", defaultBind, "HTTP listen address")
+	flag.Parse()
 
 	runCron()
-
 	initTimers()
 
-	goji.Post("/", makeHandler(addTimerHandler))
-	goji.Delete("/", makeHandler(deleteTimerHandler))
-	goji.Get("/", makeHandler(infoHandler))
-	goji.Serve()
+	server := newHTTPServer(*bind, NewAPI(scheduler))
+	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	log.Printf("Starting gowaiter on %s", *bind)
+	if err := serveUntilShutdown(shutdownContext, server); err != nil {
+		log.Fatalf("HTTP server failed: %v", err)
+	}
 }
