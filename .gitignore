@@ -30,3 +30,6 @@ _testmain.go
 # Local build output
 .bin/
 *.db
+
+# Deployment-owned periodic-job configuration.
+cron.json

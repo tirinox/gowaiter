@@ -6,6 +6,7 @@ IMAGE ?= tirinox/gowaiter
 CONTAINER ?= gowaiter_instance
 PORT ?= 10025
 DATA_VOLUME ?= gowaiter_data
+CRON_CONFIG ?= example.cron.json
 
 GO ?= go
 GOTOOLCHAIN ?= auto
@@ -79,14 +80,16 @@ build:
 	$(GO_CMD) build -trimpath -o $(BIN) .
 
 run:
-	$(GO_CMD) run .
+	$(GO_CMD) run . -cron-config $(CRON_CONFIG)
 
 docker-build:
 	docker build --pull -t $(IMAGE) .
 
 docker-run:
 	docker run --rm --name $(CONTAINER) -p $(PORT):10025 \
-		-v $(DATA_VOLUME):/data $(IMAGE)
+		-v $(DATA_VOLUME):/data \
+		-v "$(abspath $(CRON_CONFIG)):/app/cron.json:ro" \
+		$(IMAGE) -cron-config /app/cron.json
 
 clean:
 	$(RM) -r $(BIN_DIR)

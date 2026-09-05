@@ -53,7 +53,8 @@ following call chain:
 gowaiter -> nginx -> /erudite/api/cron.php -> doCRON()
 ```
 
-The default [`cron.json`](cron.json) invokes that endpoint every 60 seconds:
+The example [`example.cron.json`](example.cron.json) invokes that endpoint every
+60 seconds:
 
 ```json
 [
@@ -70,8 +71,13 @@ the same private-network restrictions, timeout, retry policy, and global
 100-request concurrency limit as timer callbacks.
 
 The configuration is validated before the HTTP server starts. Use
-`gowaiter -cron-config /path/to/cron.json` to select a different file; use an
-empty JSON array to run without periodic jobs.
+`gowaiter -cron-config /path/to/cron.json` to select a deployment-owned file;
+use an empty JSON array to run without periodic jobs. The container image does
+not embed an active schedule. `make run` and `make docker-run` use the example
+by default and accept `CRON_CONFIG=/path/to/cron.json` as an override.
+
+`compose_erudite` owns the local, stage and production cron files and mounts the
+selected file read-only at `/app/cron.json`.
 
 ## Documentation
 

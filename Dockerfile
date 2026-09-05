@@ -27,7 +27,6 @@ RUN apk add --no-cache ca-certificates \
 WORKDIR /app
 
 COPY --from=build /out/gowaiter /usr/local/bin/gowaiter
-COPY cron.json ./cron.json
 
 ENV TIMER_DB=/data/gowaiter.db
 

@@ -1,6 +1,0 @@
-[
-  {
-    "period":60,
-    "task":"http://nginx/erudite/api/cron.php"
-  }
-]
